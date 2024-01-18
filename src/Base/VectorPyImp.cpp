@@ -377,6 +377,40 @@ PyObject* VectorPy::isEqual(PyObject* args)
     return Py::new_reference_to(eq);
 }
 
+PyObject* VectorPy::isParallel(PyObject* args)
+{
+    PyObject* obj = nullptr;
+    double tolerance = 0;
+    if (!PyArg_ParseTuple(args, "O!d", &(VectorPy::Type), &obj, &tolerance)) {
+        return nullptr;
+    }
+
+    VectorPy* vec = static_cast<VectorPy*>(obj);
+
+    VectorPy::PointerType v1_ptr = getVectorPtr();
+    VectorPy::PointerType v2_ptr = vec->getVectorPtr();
+
+    Py::Boolean parallel((*v1_ptr).IsParallel(*v2_ptr, tolerance));
+    return Py::new_reference_to(parallel);
+}
+
+PyObject* VectorPy::isNormal(PyObject* args)
+{
+    PyObject* obj = nullptr;
+    double tolerance = 0;
+    if (!PyArg_ParseTuple(args, "O!d", &(VectorPy::Type), &obj, &tolerance)) {
+        return nullptr;
+    }
+
+    VectorPy* vec = static_cast<VectorPy*>(obj);
+
+    VectorPy::PointerType v1_ptr = getVectorPtr();
+    VectorPy::PointerType v2_ptr = vec->getVectorPtr();
+
+    Py::Boolean normal((*v1_ptr).IsNormal(*v2_ptr, tolerance));
+    return Py::new_reference_to(normal);
+}
+
 PyObject* VectorPy::scale(PyObject* args)
 {
     double factorX = 0.0;
@@ -713,7 +747,7 @@ int VectorPy::setCustomAttributes(const char* /*attr*/, PyObject* /*obj*/)
     return 0;
 }
 
-// TODO for v0.18:
+// TODO: for v0.18
 // In generation script allow to more precisely define which slots
 // of the number protocol should be supported instead of setting all.
 

@@ -374,8 +374,8 @@ void SketcherAddWorkspaceFillets(T& geom);
 template<>
 inline void SketcherAddWorkspaceFillets<Gui::MenuItem>(Gui::MenuItem& geom)
 {
-    geom << "Sketcher_CreateFillet"
-         << "Sketcher_CreatePointFillet";
+    geom << "Sketcher_CreatePointFillet"
+         << "Sketcher_CreateFillet";
 }
 
 template<>
@@ -534,6 +534,7 @@ inline void SketcherAddWorkbenchTools<Gui::MenuItem>(Gui::MenuItem& consaccel)
               << "Sketcher_SelectVerticalAxis"
               << "Separator"
               << "Sketcher_Offset"
+              << "Sketcher_Rotate"
               << "Sketcher_Symmetry"
               << "Sketcher_Clone"
               << "Sketcher_Copy"
@@ -558,6 +559,7 @@ inline void SketcherAddWorkbenchTools<Gui::ToolBarItem>(Gui::ToolBarItem& consac
         //<< "Sketcher_SelectConflictingConstraints"
         << "Sketcher_RestoreInternalAlignmentGeometry"
         << "Sketcher_Offset"
+        << "Sketcher_Rotate"
         << "Sketcher_Symmetry"
         << "Sketcher_CompCopy"
         << "Sketcher_RectangularArray"

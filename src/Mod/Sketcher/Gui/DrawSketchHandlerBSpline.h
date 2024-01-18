@@ -331,6 +331,9 @@ public:
         }
         // TODO: On pressing, say, W, modify last pole's weight
         // TODO: On pressing, say, M, modify next knot's multiplicity
+        else {
+            DrawSketchHandler::registerPressedKey(pressed, key);
+        }
 
         return;
     }
@@ -395,7 +398,12 @@ private:
 
     QString getCrosshairCursorSVGName() const override
     {
-        return QString::fromLatin1("Sketcher_Pointer_Create_BSpline");
+        if (SketcherGui::DrawSketchHandlerBSpline::ConstrMethod == 1) {
+            return QString::fromLatin1("Sketcher_Pointer_Create_Periodic_BSpline");
+        }
+        else {
+            return QString::fromLatin1("Sketcher_Pointer_Create_BSpline");
+        }
     }
 
     void addSugConstraint()

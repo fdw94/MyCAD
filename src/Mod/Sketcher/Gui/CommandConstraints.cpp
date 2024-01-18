@@ -1163,17 +1163,18 @@ public:
         eType = ForEdit;
 
         setCheckable(false);
+        setRememberLast(false);
 
         addCommand("Sketcher_Dimension");
         addCommand(); //separator
-        addCommand("Sketcher_ConstrainLock");
         addCommand("Sketcher_ConstrainDistanceX");
         addCommand("Sketcher_ConstrainDistanceY");
         addCommand("Sketcher_ConstrainDistance");
+        addCommand("Sketcher_ConstrainRadiam");
         addCommand("Sketcher_ConstrainRadius");
         addCommand("Sketcher_ConstrainDiameter");
-        addCommand("Sketcher_ConstrainRadiam");
         addCommand("Sketcher_ConstrainAngle");
+        addCommand("Sketcher_ConstrainLock");
     }
 
     void updateAction(int mode) override
@@ -1216,6 +1217,37 @@ public:
     }
 
     const char* className() const override { return "CmdSketcherCompDimensionTools"; }
+};
+
+// Comp for constrain tools =============================================
+
+class CmdSketcherCompConstrainTools : public Gui::GroupCommand
+{
+public:
+    CmdSketcherCompConstrainTools()
+        : GroupCommand("Sketcher_CompConstrainTools")
+    {
+        sAppModule = "Sketcher";
+        sGroup = "Sketcher";
+        sMenuText = QT_TR_NOOP("Constrain");
+        sToolTipText = QT_TR_NOOP("Constrain tools.");
+        sWhatsThis = "Sketcher_CompConstrainTools";
+        sStatusTip = sToolTipText;
+        eType = ForEdit;
+
+        setCheckable(false);
+        setRememberLast(false);
+
+        addCommand("Sketcher_ConstrainCoincidentUnified");
+        addCommand("Sketcher_ConstrainHorVer");
+        addCommand("Sketcher_ConstrainParallel");
+        addCommand("Sketcher_ConstrainPerpendicular");
+        addCommand("Sketcher_ConstrainTangent");
+        addCommand("Sketcher_ConstrainEqual");
+        addCommand("Sketcher_ConstrainSymmetric");
+        addCommand("Sketcher_ConstrainBlock");
+    }
+    const char* className() const override { return "CmdSketcherCompConstrainTools"; }
 };
 
 // Dimension tool =======================================================
@@ -1354,6 +1386,10 @@ public:
                 availableConstraint = AvailableConstraint::FIRST;
             }
             makeAppropriateConstraint(previousOnSketchPos);
+        }
+        else if (key == SoKeyboardEvent::Z && (QApplication::keyboardModifiers() & Qt::ControlModifier)) {
+            // User trying to cancel with Ctrl-Z
+            sketchgui->purgeHandler();
         }
         else {
             DrawSketchHandler::registerPressedKey(pressed, key);
@@ -1791,10 +1827,10 @@ protected:
 
     void makeCts_1Point1Circle(bool& selAllowed, Base::Vector2d onSketchPos)
     {
-        //Distance. For now only circles not arcs!
+        //Distance
         const Part::Geometry* geom = Obj->getGeometry(selCircleArc[0].GeoId);
 
-        if (availableConstraint == AvailableConstraint::FIRST && isCircle(*geom)) {
+        if (availableConstraint == AvailableConstraint::FIRST) {
             restartCommand(QT_TRANSLATE_NOOP("Command", "Add length constraint"));
             createDistanceConstrain(selPoints[0].GeoId, selPoints[0].PosId, selCircleArc[0].GeoId, selCircleArc[0].PosId, onSketchPos);
             selAllowed = true;
@@ -1884,10 +1920,10 @@ protected:
 
     void makeCts_1Line1Circle(bool& selAllowed, Base::Vector2d onSketchPos)
     {
-        //Distance. For now only circles not arcs!
+        //Distance
         const Part::Geometry* geom = Obj->getGeometry(selCircleArc[0].GeoId);
 
-        if (availableConstraint == AvailableConstraint::FIRST && isCircle(*geom)) {
+        if (availableConstraint == AvailableConstraint::FIRST) {
             restartCommand(QT_TRANSLATE_NOOP("Command", "Add length constraint"));
             createDistanceConstrain(selCircleArc[0].GeoId, selCircleArc[0].PosId, selLine[0].GeoId, selLine[0].PosId, onSketchPos); //Line second parameter
             selAllowed = true;
@@ -1965,17 +2001,9 @@ protected:
     void makeCts_2Circle(bool& selAllowed, Base::Vector2d onSketchPos)
     {
         //Distance, radial distance, equality
-        //Distance: For now only circles not arcs!
-        const Part::Geometry* geom = Obj->getGeometry(selCircleArc[0].GeoId);
-        const Part::Geometry* geom2 = Obj->getGeometry(selCircleArc[1].GeoId);
         if (availableConstraint == AvailableConstraint::FIRST) {
-            if (isCircle(*geom) && isCircle(*geom2)) {
-                restartCommand(QT_TRANSLATE_NOOP("Command", "Add length constraint"));
-                createDistanceConstrain(selCircleArc[0].GeoId, selCircleArc[0].PosId, selCircleArc[1].GeoId, selCircleArc[1].PosId, onSketchPos);
-            }
-            else {
-                availableConstraint = AvailableConstraint::THIRD;
-            }
+            restartCommand(QT_TRANSLATE_NOOP("Command", "Add length constraint"));
+            createDistanceConstrain(selCircleArc[0].GeoId, selCircleArc[0].PosId, selCircleArc[1].GeoId, selCircleArc[1].PosId, onSketchPos);
             selAllowed = true;
         }
         if (availableConstraint == AvailableConstraint::SECOND) {
@@ -2053,8 +2081,8 @@ protected:
         }
 
         bool arebothpointsorsegmentsfixed = isPointOrSegmentFixed(Obj, GeoId1) && isPointOrSegmentFixed(Obj, GeoId2);
-
-        if (PosId1 != Sketcher::PointPos::none && PosId2 == Sketcher::PointPos::none) { // Point-line case and point-circle
+        // Point-line case and point-circle/arc
+        if (PosId1 != Sketcher::PointPos::none && PosId2 == Sketcher::PointPos::none) {
             Base::Vector3d pnt = Obj->getPoint(GeoId1, PosId1);
             double ActDist = 0.;
             const Part::Geometry* geom = Obj->getGeometry(GeoId2);
@@ -2072,40 +2100,63 @@ protected:
                 Base::Vector3d di = ct - pnt;
                 ActDist = std::abs(di.Length() - circle->getRadius());
             }
+            else if (isArcOfCircle(*geom)) {
+                auto arc = static_cast<const Part::GeomArcOfCircle*>(geom);
+                Base::Vector3d ct = arc->getCenter();
+                Base::Vector3d di = ct - pnt;
+                ActDist = std::abs(di.Length() - arc->getRadius());
+            }
 
             Gui::cmdAppObjectArgs(Obj, "addConstraint(Sketcher.Constraint('Distance',%d,%d,%d,%f)) ",
                 GeoId1, static_cast<int>(PosId1), GeoId2, ActDist);
         }
-        else if (PosId1 == Sketcher::PointPos::none && PosId2 == Sketcher::PointPos::none) { // Circle - line, circle - circle cases
+        // Circle/arc - line, circle/arc - circle/arc cases
+        else if (PosId1 == Sketcher::PointPos::none
+                 && PosId2 == Sketcher::PointPos::none) {
             const Part::Geometry* geo1 = Obj->getGeometry(GeoId1);
             const Part::Geometry* geo2 = Obj->getGeometry(GeoId2);
-
-            if (isCircle(*geo1) && isLineSegment(*geo2)) { // Circle - line case
-                auto circleSeg = static_cast<const Part::GeomCircle*>(geo1);
-                double radius = circleSeg->getRadius();
-                Base::Vector3d center = circleSeg->getCenter();
-
+            double radius1, radius2;
+            Base::Vector3d center1, center2;
+            if (isCircle(*geo1)) {
+                auto conic = static_cast<const Part::GeomCircle*>(geo1);
+                radius1 = conic->getRadius();
+                center1 = conic->getCenter();
+            }
+            else if (isArcOfCircle(*geo1)) {
+                auto conic = static_cast<const Part::GeomArcOfCircle*>(geo1);
+                radius1 = conic->getRadius();
+                center1 = conic->getCenter();
+            }
+            if (isCircle(*geo2)) {
+                auto conic = static_cast<const Part::GeomCircle*>(geo2);
+                radius2 = conic->getRadius();
+                center2 = conic->getCenter();
+            }
+            else if (isArcOfCircle(*geo2)){
+                auto conic = static_cast<const Part::GeomArcOfCircle*>(geo2);
+                radius2 = conic->getRadius();
+                center2 = conic->getCenter();
+            }
+            // Circle/arc - line case
+            if ((isCircle(*geo1) || isArcOfCircle(*geo1)) && isLineSegment(*geo2)) {
                 auto lineSeg = static_cast<const Part::GeomLineSegment*>(geo2);
                 Base::Vector3d pnt1 = lineSeg->getStartPoint();
                 Base::Vector3d pnt2 = lineSeg->getEndPoint();
                 Base::Vector3d d = pnt2 - pnt1;
                 double ActDist =
-                    std::abs(-center.x * d.y + center.y * d.x + pnt1.x * pnt2.y - pnt2.x * pnt1.y)
-                    / d.Length()
-                    - radius;
+                    std::abs(-center1.x * d.y + center1.y * d.x + pnt1.x * pnt2.y - pnt2.x * pnt1.y)
+                        / d.Length()
+                    - radius1;
 
-                Gui::cmdAppObjectArgs(Obj, "addConstraint(Sketcher.Constraint('Distance',%d,%d,%f))",
-                    GeoId1, GeoId2, ActDist);
+                Gui::cmdAppObjectArgs(Obj,
+                                      "addConstraint(Sketcher.Constraint('Distance',%d,%d,%f))",
+                                      GeoId1,
+                                      GeoId2,
+                                      ActDist);
             }
-            else if (isCircle(*geo1) && isCircle(*geo2)) { // Circle - circle case
-                auto circleSeg1 = static_cast<const Part::GeomCircle*>(geo1);
-                double radius1 = circleSeg1->getRadius();
-                Base::Vector3d center1 = circleSeg1->getCenter();
-
-                auto circleSeg2 = static_cast<const Part::GeomCircle*>(geo2);
-                double radius2 = circleSeg2->getRadius();
-                Base::Vector3d center2 = circleSeg2->getCenter();
-
+            // Circle/arc - circle/arc case
+            else if ((isCircle(*geo1) || isArcOfCircle(*geo1))
+                     && (isCircle(*geo2) || isArcOfCircle(*geo2))) {
                 double ActDist = 0.;
 
                 Base::Vector3d intercenter = center1 - center2;
@@ -2122,21 +2173,28 @@ protected:
                     ActDist = bigradius - smallradius - intercenterdistance;
                 }
 
-                Gui::cmdAppObjectArgs(Obj, "addConstraint(Sketcher.Constraint('Distance',%d,%d,%f))",
-                    GeoId1, GeoId2, ActDist);
+                Gui::cmdAppObjectArgs(Obj,
+                                      "addConstraint(Sketcher.Constraint('Distance',%d,%d,%f))",
+                                      GeoId1,
+                                      GeoId2,
+                                      ActDist);
             }
         }
-        else { //both points
+        else {  // both points
             Base::Vector3d pnt1 = Obj->getPoint(GeoId1, PosId1);
             Base::Vector3d pnt2 = Obj->getPoint(GeoId2, PosId2);
 
-            Gui::cmdAppObjectArgs(Obj, "addConstraint(Sketcher.Constraint('Distance',%d,%d,%d,%d,%f)) ",
-                GeoId1, static_cast<int>(PosId1), GeoId2, static_cast<int>(PosId2), (pnt2 - pnt1).Length());
+            Gui::cmdAppObjectArgs(Obj,
+                                  "addConstraint(Sketcher.Constraint('Distance',%d,%d,%d,%d,%f)) ",
+                                  GeoId1,
+                                  static_cast<int>(PosId1),
+                                  GeoId2,
+                                  static_cast<int>(PosId2),
+                                  (pnt2 - pnt1).Length());
         }
 
         const std::vector<Sketcher::Constraint*>& ConStr = Obj->Constraints.getValues();
-        if (arebothpointsorsegmentsfixed
-            || GeoId1 <= Sketcher::GeoEnum::RefExt
+        if (arebothpointsorsegmentsfixed || GeoId1 <= Sketcher::GeoEnum::RefExt
             || constraintCreationMode == Reference) {
             // it is a constraint on a external line, make it non-driving
             Gui::cmdAppObjectArgs(Obj, "setDriving(%i,%s)", ConStr.size() - 1, "False");
@@ -2609,6 +2667,7 @@ public:
         eType = ForEdit;
 
         setCheckable(false);
+        setRememberLast(false);
 
         addCommand("Sketcher_ConstrainHorVer");
         addCommand("Sketcher_ConstrainHorizontal");
@@ -3541,7 +3600,7 @@ CmdSketcherConstrainCoincidentUnified::CmdSketcherConstrainCoincidentUnified(con
         "or a concentric constraint between circles, arcs, and ellipses");
     sWhatsThis = "Sketcher_ConstrainCoincidentUnified";
     sStatusTip = sToolTipText;
-    sPixmap = "Constraint_PointOnObject";
+    sPixmap = "Constraint_Coincident";
 
     ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Sketcher/Constraints");
@@ -4328,11 +4387,10 @@ void CmdSketcherConstrainDistance::activated(int iMsg)
 
             return;
         }
-        else if (isCircle(*geom)) {
-            auto circleSeg = static_cast<const Part::GeomCircle*>(geom);
-            Base::Vector3d ct = circleSeg->getCenter();
-            Base::Vector3d d = ct - pnt;
-            double ActDist = std::abs(d.Length() - circleSeg->getRadius());
+        else if (isCircleOrArc(*geom)) {    // point to circle distance
+            auto [radius, center] = getRadiusCenterCircleArc(geom);
+            Base::Vector3d d = center - pnt;
+            double ActDist = std::abs(d.Length() - radius);
 
             openCommand(QT_TRANSLATE_NOOP("Command", "Add point to circle Distance constraint"));
             Gui::cmdAppObjectArgs(selection[0].getObject(),
@@ -4364,16 +4422,12 @@ void CmdSketcherConstrainDistance::activated(int iMsg)
         const Part::Geometry* geom1 = Obj->getGeometry(GeoId1);
         const Part::Geometry* geom2 = Obj->getGeometry(GeoId2);
 
-        if (isCircle(*geom1) && isCircle(*geom2)) {// circle to circle distance
-            auto circleSeg1 = static_cast<const Part::GeomCircle*>(geom1);
-            double radius1 = circleSeg1->getRadius();
-            Base::Vector3d center1 = circleSeg1->getCenter();
+        if(isCircleOrArc(*geom1) && isCircleOrArc(*geom2)) {
 
-            auto circleSeg2 = static_cast<const Part::GeomCircle*>(geom2);
-            double radius2 = circleSeg2->getRadius();
-            Base::Vector3d center2 = circleSeg2->getCenter();
+            auto [radius1, center1] = getRadiusCenterCircleArc(geom1);
+            auto [radius2, center2] = getRadiusCenterCircleArc(geom2);
 
-            double ActDist = 0.;
+            double ActDist = 0.0;
 
             Base::Vector3d intercenter = center1 - center2;
             double intercenterdistance = intercenter.Length();
@@ -4391,20 +4445,20 @@ void CmdSketcherConstrainDistance::activated(int iMsg)
 
             openCommand(QT_TRANSLATE_NOOP("Command", "Add circle to circle distance constraint"));
             Gui::cmdAppObjectArgs(selection[0].getObject(),
-                "addConstraint(Sketcher.Constraint('Distance',%d,%d,%f))",
-                GeoId1,
-                GeoId2,
-                ActDist);
+                                  "addConstraint(Sketcher.Constraint('Distance',%d,%d,%f))",
+                                  GeoId1,
+                                  GeoId2,
+                                  ActDist);
 
             if (arebothpointsorsegmentsfixed
                 || constraintCreationMode
-                == Reference) {// it is a constraint on a external line, make it non-driving
+                    == Reference) {// it is a constraint on a external line, make it non-driving
                 const std::vector<Sketcher::Constraint*>& ConStr = Obj->Constraints.getValues();
 
                 Gui::cmdAppObjectArgs(selection[0].getObject(),
-                    "setDriving(%d,%s)",
-                    ConStr.size() - 1,
-                    "False");
+                                      "setDriving(%d,%s)",
+                                      ConStr.size() - 1,
+                                      "False");
                 finishDatumConstraint(this, Obj, false);
             }
             else {
@@ -4413,17 +4467,15 @@ void CmdSketcherConstrainDistance::activated(int iMsg)
 
             return;
         }
-        else if ((isCircle(*geom1) && isLineSegment(*geom2))
-            || (isLineSegment(*geom1) && isCircle(*geom2))) {// circle to line distance
+        else if ((isCircleOrArc(*geom1) && isLineSegment(*geom2))
+            || (isLineSegment(*geom1) && isCircleOrArc(*geom2))) {// circle to line distance
 
             if (isLineSegment(*geom1)) {
                 std::swap(geom1, geom2);// Assume circle is first
                 std::swap(GeoId1, GeoId2);
             }
 
-            auto circleSeg = static_cast<const Part::GeomCircle*>(geom1);
-            double radius = circleSeg->getRadius();
-            Base::Vector3d center = circleSeg->getCenter();
+            auto [radius, center] = getRadiusCenterCircleArc(geom1);
 
             auto lineSeg = static_cast<const Part::GeomLineSegment*>(geom2);
             Base::Vector3d pnt1 = lineSeg->getStartPoint();
@@ -4456,6 +4508,13 @@ void CmdSketcherConstrainDistance::activated(int iMsg)
                 finishDatumConstraint(this, Obj, true);
             }
 
+            return;
+        }
+        else {
+            Gui::TranslatedNotification(
+                Obj,
+                QObject::tr("Wrong selection"),
+                QObject::tr("Cannot add a length constraint on this selection!"));
             return;
         }
     }
@@ -9895,5 +9954,6 @@ void CreateSketcherCommandsConstraints()
     rcCmdMgr.addCommand(new CmdSketcherToggleDrivingConstraint());
     rcCmdMgr.addCommand(new CmdSketcherToggleActiveConstraint());
     rcCmdMgr.addCommand(new CmdSketcherCompDimensionTools());
+    rcCmdMgr.addCommand(new CmdSketcherCompConstrainTools());
 }
 // clang-format on
